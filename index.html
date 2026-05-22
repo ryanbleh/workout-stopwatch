@@ -480,6 +480,21 @@
 </div>
 
 <script>
+// ── Screen Wake Lock ─────────────────────────────────────────
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch {}
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
 // ── Persistence ──────────────────────────────────────────────
 const STORAGE_KEY = 'workoutStopwatch_v1';
 
@@ -656,6 +671,7 @@ function enterPhase(phase) {
     T.running = false;
     $startBtn.textContent = 'RESTART';
     $timeDisp.classList.add('pulse');
+    releaseWakeLock();
   } else {
     $timeDisp.classList.remove('pulse');
   }
@@ -712,6 +728,7 @@ function startTimer() {
   enterPhase('getready');
   T.rafId = requestAnimationFrame(tick);
   $startBtn.textContent = 'PAUSE';
+  requestWakeLock();
   renderExList();
 }
 
@@ -720,6 +737,7 @@ function resumeTimer() {
   T.startedAt = Date.now();
   T.rafId = requestAnimationFrame(tick);
   $startBtn.textContent = 'PAUSE';
+  requestWakeLock();
 }
 
 function pauseTimer() {
@@ -728,6 +746,7 @@ function pauseTimer() {
   if (T.rafId) cancelAnimationFrame(T.rafId);
   $startBtn.textContent = 'RESUME';
   if (window.speechSynthesis) window.speechSynthesis.cancel();
+  releaseWakeLock();
 }
 
 function resetTimer() {
@@ -741,6 +760,7 @@ function resetTimer() {
   setPhaseColor('idle');
   $startBtn.textContent = 'START';
   $timeDisp.classList.remove('pulse');
+  releaseWakeLock();
   renderIdle();
   renderExList();
 }
@@ -994,8 +1014,11 @@ document.getElementById('circInc').addEventListener('click', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && T.running && !T.paused && !T.rafId)
-    T.rafId = requestAnimationFrame(tick);
+  if (!document.hidden && T.running && !T.paused) {
+    // OS releases wake lock when tab goes to background — re-acquire on return
+    requestWakeLock();
+    if (!T.rafId) T.rafId = requestAnimationFrame(tick);
+  }
 });
 
 // ── Init ─────────────────────────────────────────────────────
