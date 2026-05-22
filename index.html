@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gym Timer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #09090e;
+      --surface: #111118;
+      --surf2:   #18181f;
+      --border:  #26263a;
+      --text:    #e2e2ee;
+      --muted:   #55556e;
+      --phase:   #55556e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 14px 48px;
+      gap: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; }
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 900;
+      letter-spacing: 0.35em;
+    }
+    header p {
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      margin-top: 2px;
+    }
+
+    /* ── Exercise list ── */
+    .ex-section { width: 100%; display: flex; flex-direction: column; gap: 7px; }
+    .sec-hdr {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .sec-title {
+      font-size: 0.63rem;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .sec-sub { font-size: 0.63rem; color: var(--muted); }
+
+    .ex-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 252px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      padding-right: 2px;
+    }
+    .ex-list::-webkit-scrollbar { width: 4px; }
+    .ex-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .ex-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 11px;
+      padding: 8px 10px;
+      transition: border-color 0.3s;
+    }
+    .ex-item.active-ex { border-color: var(--phase); }
+    .ex-item.next-ex   { border-color: color-mix(in srgb, var(--phase) 45%, transparent); }
+
+    .ex-num {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--muted);
+      min-width: 18px;
+      text-align: center;
+    }
+    .ex-name-input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 500;
+      outline: none;
+      min-width: 0;
+    }
+    .ex-name-input::placeholder { color: var(--muted); }
+    .ex-name-input:disabled { cursor: default; opacity: 0.7; }
+
+    .ex-arrows { display: flex; flex-direction: column; gap: 1px; }
+    .ex-arrows button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.55rem;
+      line-height: 1;
+      padding: 3px 5px;
+      border-radius: 3px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ex-arrows button:hover:not(:disabled) { background: var(--border); color: var(--text); }
+    .ex-arrows button:disabled { opacity: 0.25; cursor: default; }
+
+    .ex-del {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 4px 6px;
+      border-radius: 6px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ex-del:hover:not(:disabled) { background: rgba(255,60,60,.15); color: #ff4444; }
+    .ex-del:disabled { opacity: 0.2; cursor: default; }
+
+    .add-btn {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      padding: 9px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 700;
+      width: 100%;
+      letter-spacing: 0.06em;
+      transition: all 0.15s;
+    }
+    .add-btn:hover:not(:disabled) { border-color: var(--phase); color: var(--text); }
+    .add-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* ── Timer circle ── */
+    .timer-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .timer-svg {
+      transform: rotate(-90deg);
+      filter: drop-shadow(0 0 20px color-mix(in srgb, var(--phase) 30%, transparent));
+      transition: filter 0.4s;
+    }
+    .ring-bg { fill: none; stroke: var(--surf2); stroke-width: 12; }
+    .ring-fg {
+      fill: none;
+      stroke: var(--phase);
+      stroke-width: 12;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.12s linear, stroke 0.35s;
+    }
+    .timer-center {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      max-width: 196px;
+      text-align: center;
+    }
+    .phase-lbl {
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      color: var(--phase);
+      text-transform: uppercase;
+      transition: color 0.35s;
+      min-height: 1em;
+    }
+    .time-disp {
+      font-size: 3.8rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .ex-name-disp {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--phase);
+      transition: color 0.35s;
+      line-height: 1.2;
+      max-width: 190px;
+      word-break: break-word;
+    }
+    .ex-prog-disp {
+      font-size: 0.66rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      min-height: 1em;
+    }
+    @media (max-width: 360px) {
+      .time-disp { font-size: 3.1rem; }
+      .ex-name-disp { font-size: 0.8rem; }
+    }
+
+    /* ── Total time ── */
+    .total-time { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.12em; min-height: 1em; }
+
+    /* ── Settings panel ── */
+    .settings {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+    }
+    .set-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .set-lbl { font-size: 0.82rem; font-weight: 500; }
+    .set-lbl small { display: block; font-size: 0.65rem; color: var(--muted); font-weight: 400; margin-top: 1px; }
+    .set-ctrl { display: flex; align-items: center; gap: 7px; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 108px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--phase);
+      cursor: pointer;
+      transition: background 0.35s;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--phase);
+      border: none;
+      cursor: pointer;
+    }
+    .val-disp {
+      font-size: 0.88rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    .stepper button {
+      background: none;
+      border: none;
+      color: var(--text);
+      width: 32px; height: 32px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s;
+      flex-shrink: 0;
+    }
+    .stepper button:hover:not(:disabled) { background: var(--border); }
+    .stepper button:disabled { opacity: 0.3; cursor: default; }
+    .stepper span {
+      font-size: 0.9rem;
+      font-weight: 700;
+      min-width: 32px;
+      text-align: center;
+    }
+    .settings-divider { height: 1px; background: var(--border); margin: -1px 0; }
+
+    .tts-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .toggle { position: relative; width: 42px; height: 23px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--phase); }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 19px; height: 19px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-track::after { transform: translateX(19px); }
+    .tts-lbl { font-size: 0.82rem; font-weight: 500; }
+    .tts-sub { display: flex; align-items: center; gap: 5px; font-size: 0.73rem; color: var(--muted); margin-left: auto; }
+    select {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 6px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      cursor: pointer;
+    }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      border: none;
+      border-radius: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: 0.07em;
+      transition: all 0.13s;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-ghost {
+      background: var(--surf2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 11px 17px;
+      font-size: 0.78rem;
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+    .btn-primary {
+      background: var(--phase);
+      color: #000;
+      padding: 13px 38px;
+      font-size: 0.93rem;
+      min-width: 128px;
+      text-align: center;
+      transition: background 0.35s, filter 0.13s;
+    }
+    .btn-primary:hover { filter: brightness(1.12); }
+
+    @keyframes phaseFlash {
+      0%   { opacity: 0; transform: scale(1.18); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .phase-lbl.flash { animation: phaseFlash 0.26s ease; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0.55; }
+    }
+    .time-disp.pulse { animation: pulse 1.3s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>GYM TIMER</h1>
+  <p>INTERVAL TRAINING</p>
+</header>
+
+<!-- Exercise List -->
+<div class="ex-section">
+  <div class="sec-hdr">
+    <span class="sec-title">Exercises</span>
+    <span class="sec-sub" id="exCountLabel"></span>
+  </div>
+  <div class="ex-list" id="exList"></div>
+  <button class="add-btn" id="addExBtn">+ Add Exercise</button>
+</div>
+
+<!-- Timer -->
+<div class="timer-wrap">
+  <svg class="timer-svg" width="256" height="256" viewBox="0 0 256 256">
+    <circle class="ring-bg" cx="128" cy="128" r="108"/>
+    <circle class="ring-fg" id="ringFg" cx="128" cy="128" r="108"
+      stroke-dasharray="678.58 678.58" stroke-dashoffset="0"/>
+  </svg>
+  <div class="timer-center">
+    <div class="phase-lbl" id="phaseLbl">READY</div>
+    <div class="time-disp" id="timeDisp">00:00</div>
+    <div class="ex-name-disp" id="exNameDisp"></div>
+    <div class="ex-prog-disp" id="exProgDisp"></div>
+  </div>
+</div>
+
+<div class="total-time" id="totalTimeDisp"></div>
+
+<!-- Settings -->
+<div class="settings">
+  <div class="sec-title" style="margin-bottom:-2px">Settings</div>
+
+  <div class="set-row">
+    <div class="set-lbl">Work Time <small>seconds per exercise</small></div>
+    <div class="set-ctrl">
+      <input type="range" id="workSlider" min="5" max="600" step="5" value="40">
+      <div class="val-disp" id="workVal">40s</div>
+    </div>
+  </div>
+
+  <div class="set-row">
+    <div class="set-lbl">Rest Time <small>between exercises</small></div>
+    <div class="set-ctrl">
+      <input type="range" id="restSlider" min="0" max="120" step="5" value="15">
+      <div class="val-disp" id="restVal">15s</div>
+    </div>
+  </div>
+
+  <div class="set-row">
+    <div class="set-lbl">Circuits <small>full rounds through list</small></div>
+    <div class="stepper">
+      <button id="circDec">−</button>
+      <span id="circVal">1</span>
+      <button id="circInc">+</button>
+    </div>
+  </div>
+
+  <div class="set-row" id="circRestRow" style="display:none">
+    <div class="set-lbl">Circuit Rest <small>between circuits</small></div>
+    <div class="set-ctrl">
+      <input type="range" id="circRestSlider" min="10" max="300" step="10" value="60">
+      <div class="val-disp" id="circRestVal">60s</div>
+    </div>
+  </div>
+
+  <div class="settings-divider"></div>
+
+  <div class="tts-row">
+    <label class="toggle">
+      <input type="checkbox" id="ttsToggle" checked>
+      <div class="toggle-track"></div>
+    </label>
+    <span class="tts-lbl">Voice Countdown</span>
+    <div class="tts-sub">
+      Count from
+      <select id="countFrom">
+        <option value="3">3s</option>
+        <option value="5" selected>5s</option>
+        <option value="10">10s</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn btn-ghost" id="resetBtn">RESET</button>
+  <button class="btn btn-primary" id="startBtn">START</button>
+  <button class="btn btn-ghost" id="skipBtn">SKIP →</button>
+</div>
+
+<script>
+// ── Persistence ──────────────────────────────────────────────
+const STORAGE_KEY = 'workoutStopwatch_v1';
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ exercises, cfg }));
+  } catch {}
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.exercises) && data.exercises.length)
+      exercises = data.exercises.map(e => String(e).trim()).filter(Boolean);
+    if (data.cfg && typeof data.cfg === 'object') {
+      cfg.work        = Number(data.cfg.work)        || cfg.work;
+      cfg.rest        = Number(data.cfg.rest)         ?? cfg.rest;
+      cfg.circuits    = Number(data.cfg.circuits)    || cfg.circuits;
+      cfg.circuitRest = Number(data.cfg.circuitRest) || cfg.circuitRest;
+    }
+  } catch {}
+}
+
+// ── Constants ────────────────────────────────────────────────
+const RADIUS = 108;
+const CIRC   = 2 * Math.PI * RADIUS; // 678.58
+
+const PHASE_COLOR = {
+  idle:       '#55556e',
+  getready:   '#ffb020',
+  work:       '#00e87a',
+  rest:       '#00aaff',
+  circuitrest:'#a855f7',
+  complete:   '#ff6b35',
+};
+const PHASE_NAME = {
+  idle:'READY', getready:'GET READY', work:'WORK',
+  rest:'REST',  circuitrest:'CIRCUIT REST', complete:'COMPLETE',
+};
+
+// ── Exercise list ────────────────────────────────────────────
+let exercises = [
+  'Push-ups', 'Squats', 'Lunges', 'Burpees', 'Mountain Climbers',
+  'Jumping Jacks', 'Plank Hold', 'High Knees', 'Tricep Dips', 'Crunches',
+];
+
+// ── Config ───────────────────────────────────────────────────
+let cfg = { work: 40, rest: 15, circuits: 1, circuitRest: 60 };
+
+// ── Timer state ──────────────────────────────────────────────
+let T = {
+  phase:     'idle',
+  exIdx:     0,     // index into exercises array
+  circuit:   1,
+  phaseDur:  0,
+  timeLeft:  0,
+  running:   false,
+  paused:    false,
+  rafId:     null,
+  startedAt: 0,
+  accumMs:   0,
+  spoken:    new Set(),
+};
+
+// ── DOM ──────────────────────────────────────────────────────
+const $phaseLbl  = document.getElementById('phaseLbl');
+const $timeDisp  = document.getElementById('timeDisp');
+const $exName    = document.getElementById('exNameDisp');
+const $exProg    = document.getElementById('exProgDisp');
+const $totalDisp = document.getElementById('totalTimeDisp');
+const $ring      = document.getElementById('ringFg');
+const $startBtn  = document.getElementById('startBtn');
+const $exList    = document.getElementById('exList');
+
+// ── Audio ────────────────────────────────────────────────────
+let actx = null;
+function getCtx() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  return actx;
+}
+function beep(freq, dur = 0.1, vol = 0.28) {
+  try {
+    const c = getCtx(), osc = c.createOscillator(), g = c.createGain();
+    osc.connect(g); g.connect(c.destination);
+    osc.frequency.value = freq; osc.type = 'sine';
+    g.gain.setValueAtTime(vol, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+    osc.start(); osc.stop(c.currentTime + dur);
+  } catch {}
+}
+function phaseBeep(phase) {
+  if      (phase === 'work')        { beep(880,.12,.4); setTimeout(()=>beep(880,.12,.35),160); }
+  else if (phase === 'rest')        { beep(440,.22,.3); }
+  else if (phase === 'getready')    { beep(660,.1,.2); }
+  else if (phase === 'circuitrest') { beep(550,.25,.3); }
+  else if (phase === 'complete')    {
+    beep(523,.15,.4);
+    setTimeout(()=>beep(659,.15,.4),220);
+    setTimeout(()=>beep(784,.3,.5),440);
+  }
+}
+
+// ── TTS ──────────────────────────────────────────────────────
+function speak(text, cancel = false) {
+  if (!document.getElementById('ttsToggle').checked) return;
+  if (!window.speechSynthesis) return;
+  if (cancel) window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
+function announcePhase(phase) {
+  const ex   = exercises[T.exIdx] ?? 'Go';
+  const next = exercises[T.exIdx + 1];
+  const isLast = T.exIdx === exercises.length - 1 && T.circuit === cfg.circuits;
+
+  if (phase === 'getready') {
+    speak(`Get ready! ${exercises.length} exercise${exercises.length !== 1 ? 's' : ''}.`, true);
+  } else if (phase === 'work') {
+    speak(isLast ? `Last one! ${ex}!` : `${ex}!`, true);
+  } else if (phase === 'rest') {
+    const nextEx = exercises[T.exIdx]; // exIdx already advanced
+    speak(nextEx ? `Rest. Next: ${nextEx}.` : 'Rest.', true);
+  } else if (phase === 'circuitrest') {
+    speak(`Circuit ${T.circuit - 1} done. Rest before circuit ${T.circuit}.`, true);
+  } else if (phase === 'complete') {
+    speak('Workout complete! Great job!', true);
+  }
+}
+
+function maybeCountdown(secsLeft) {
+  const threshold = parseInt(document.getElementById('countFrom').value, 10);
+  if (secsLeft > threshold || secsLeft <= 0 || T.spoken.has(secsLeft)) return;
+  T.spoken.add(secsLeft);
+  beep(secsLeft === 1 ? 1100 : 700, 0.07, 0.2);
+  if (T.phase !== 'getready') speak(String(secsLeft));
+}
+
+// ── Timer engine ─────────────────────────────────────────────
+function fmtTime(sec) {
+  const s = Math.ceil(sec);
+  return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function totalWorkoutSecs() {
+  const perCircuit = exercises.length * cfg.work
+    + Math.max(0, exercises.length - 1) * cfg.rest;
+  return 5 + cfg.circuits * perCircuit
+    + Math.max(0, cfg.circuits - 1) * cfg.circuitRest;
+}
+
+function enterPhase(phase) {
+  T.phase    = phase;
+  T.spoken   = new Set();
+  T.accumMs  = 0;
+  T.startedAt = Date.now();
+
+  const dur = { getready:5, work:cfg.work, rest:cfg.rest, circuitrest:cfg.circuitRest, complete:0 };
+  T.phaseDur = dur[phase] ?? 0;
+  T.timeLeft = T.phaseDur;
+
+  setPhaseColor(phase);
+  announcePhase(phase);
+  phaseBeep(phase);
+
+  $phaseLbl.classList.remove('flash');
+  void $phaseLbl.offsetWidth;
+  $phaseLbl.classList.add('flash');
+
+  if (phase === 'complete') {
+    T.running = false;
+    $startBtn.textContent = 'RESTART';
+    $timeDisp.classList.add('pulse');
+  } else {
+    $timeDisp.classList.remove('pulse');
+  }
+
+  renderUI();
+  renderExList();
+  scrollActiveEx();
+}
+
+function advance() {
+  if (T.phase === 'getready') {
+    T.exIdx   = 0;
+    T.circuit = 1;
+    enterPhase('work');
+  } else if (T.phase === 'work') {
+    const lastEx      = T.exIdx === exercises.length - 1;
+    const lastCircuit = T.circuit === cfg.circuits;
+
+    if (lastEx && lastCircuit) {
+      enterPhase('complete');
+    } else if (lastEx) {
+      T.circuit++;
+      T.exIdx = 0;
+      enterPhase(cfg.circuitRest > 0 ? 'circuitrest' : 'work');
+    } else {
+      T.exIdx++;
+      enterPhase(cfg.rest > 0 ? 'rest' : 'work');
+    }
+  } else if (T.phase === 'rest' || T.phase === 'circuitrest') {
+    enterPhase('work');
+  }
+}
+
+function tick() {
+  if (!T.running || T.paused) return;
+  const elapsed = T.accumMs + (Date.now() - T.startedAt);
+  T.timeLeft = Math.max(0, T.phaseDur - elapsed / 1000);
+  maybeCountdown(Math.ceil(T.timeLeft));
+  renderUI();
+  if (T.timeLeft <= 0) {
+    advance();
+    if (T.running) T.rafId = requestAnimationFrame(tick);
+  } else {
+    T.rafId = requestAnimationFrame(tick);
+  }
+}
+
+function startTimer() {
+  if (!exercises.length) return;
+  T.running   = true;
+  T.paused    = false;
+  T.exIdx     = 0;
+  T.circuit   = 1;
+  enterPhase('getready');
+  T.rafId = requestAnimationFrame(tick);
+  $startBtn.textContent = 'PAUSE';
+  renderExList();
+}
+
+function resumeTimer() {
+  T.paused    = false;
+  T.startedAt = Date.now();
+  T.rafId = requestAnimationFrame(tick);
+  $startBtn.textContent = 'PAUSE';
+}
+
+function pauseTimer() {
+  T.paused   = true;
+  T.accumMs += Date.now() - T.startedAt;
+  if (T.rafId) cancelAnimationFrame(T.rafId);
+  $startBtn.textContent = 'RESUME';
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function resetTimer() {
+  T.running = false;
+  T.paused  = false;
+  T.phase   = 'idle';
+  T.exIdx   = 0;
+  T.circuit = 1;
+  if (T.rafId) cancelAnimationFrame(T.rafId);
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  setPhaseColor('idle');
+  $startBtn.textContent = 'START';
+  $timeDisp.classList.remove('pulse');
+  renderIdle();
+  renderExList();
+}
+
+function skipPhase() {
+  if (!T.running || T.phase === 'idle' || T.phase === 'complete') return;
+  if (T.rafId) cancelAnimationFrame(T.rafId);
+  advance();
+  if (T.running) T.rafId = requestAnimationFrame(tick);
+}
+
+// ── UI rendering ─────────────────────────────────────────────
+function setPhaseColor(phase) {
+  const c = PHASE_COLOR[phase] ?? PHASE_COLOR.idle;
+  document.documentElement.style.setProperty('--phase', c);
+  $ring.style.stroke = c;
+}
+
+function renderUI() {
+  const { phase, exIdx, circuit, timeLeft, phaseDur } = T;
+  $phaseLbl.textContent = PHASE_NAME[phase] ?? '';
+
+  if (phase === 'complete') {
+    $timeDisp.textContent = 'DONE';
+    $exName.textContent   = '';
+    $exProg.textContent   = 'All done!';
+    $ring.style.strokeDashoffset = 0;
+    return;
+  }
+
+  $timeDisp.textContent = fmtTime(timeLeft);
+  $ring.style.strokeDashoffset = phaseDur > 0
+    ? CIRC * (1 - timeLeft / phaseDur)
+    : 0;
+
+  const exName   = exercises[exIdx] ?? '';
+  const total    = exercises.length;
+  const circInfo = cfg.circuits > 1 ? ` · Circuit ${circuit}/${cfg.circuits}` : '';
+
+  if (phase === 'work') {
+    $exName.textContent = exName;
+    $exProg.textContent = `Ex ${exIdx + 1} of ${total}${circInfo}`;
+  } else if (phase === 'rest') {
+    $exName.textContent = `Next: ${exName}`;
+    $exProg.textContent = `Ex ${exIdx + 1} of ${total} up next${circInfo}`;
+  } else if (phase === 'circuitrest') {
+    $exName.textContent = `Next: ${exercises[0] ?? ''}`;
+    $exProg.textContent = `Circuit ${circuit} of ${cfg.circuits} up next`;
+  } else if (phase === 'getready') {
+    $exName.textContent = `First: ${exercises[0] ?? ''}`;
+    $exProg.textContent = `${total} exercise${total !== 1 ? 's' : ''} · ${cfg.circuits} circuit${cfg.circuits !== 1 ? 's' : ''}`;
+  } else {
+    $exName.textContent = '';
+    $exProg.textContent = '';
+  }
+}
+
+function renderIdle() {
+  $phaseLbl.textContent = 'READY';
+  $timeDisp.textContent = fmtTime(cfg.work);
+  $exName.textContent   = exercises[0] ? `First: ${exercises[0]}` : '';
+  $exProg.textContent   = `${exercises.length} exercises · ${cfg.circuits} circuit${cfg.circuits !== 1 ? 's' : ''}`;
+  $ring.style.strokeDashoffset = 0;
+  renderTotalTime();
+}
+
+function renderTotalTime() {
+  if (!exercises.length) { $totalDisp.textContent = ''; return; }
+  const t = totalWorkoutSecs();
+  const m = Math.floor(t / 60), s = t % 60;
+  $totalDisp.textContent = m > 0 ? `${m}m ${s}s total` : `${s}s total`;
+}
+
+// ── Exercise list rendering ───────────────────────────────────
+function renderExList() {
+  const isRunning = T.running || T.paused;
+  $exList.innerHTML = '';
+
+  exercises.forEach((name, i) => {
+    const item = document.createElement('div');
+    item.className = 'ex-item';
+
+    // Highlight current during work, or upcoming during rest/circuitrest
+    const isActive = isRunning && (
+      (T.phase === 'work' && T.exIdx === i) ||
+      (T.phase === 'rest' && T.exIdx === i) ||
+      (T.phase === 'circuitrest' && i === 0)
+    );
+    const isNext = isRunning && T.phase === 'work' && T.exIdx + 1 === i;
+    if (isActive) item.classList.add('active-ex');
+    else if (isNext) item.classList.add('next-ex');
+
+    const num = document.createElement('span');
+    num.className = 'ex-num';
+    num.textContent = i + 1;
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'ex-name-input';
+    inp.value = name;
+    inp.placeholder = `Exercise ${i + 1}`;
+    inp.disabled = isRunning;
+    inp.addEventListener('blur', () => {
+      exercises[i] = inp.value.trim() || `Exercise ${i + 1}`;
+      inp.value = exercises[i];
+      updateExMeta();
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') inp.blur();
+    });
+
+    const arrows = document.createElement('div');
+    arrows.className = 'ex-arrows';
+
+    const upBtn = document.createElement('button');
+    upBtn.textContent = '▲';
+    upBtn.disabled = i === 0 || isRunning;
+    upBtn.addEventListener('click', () => { moveEx(i, -1); });
+
+    const dnBtn = document.createElement('button');
+    dnBtn.textContent = '▼';
+    dnBtn.disabled = i === exercises.length - 1 || isRunning;
+    dnBtn.addEventListener('click', () => { moveEx(i, 1); });
+
+    arrows.appendChild(upBtn);
+    arrows.appendChild(dnBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'ex-del';
+    delBtn.textContent = '×';
+    delBtn.disabled = isRunning;
+    delBtn.addEventListener('click', () => { deleteEx(i); });
+
+    item.appendChild(num);
+    item.appendChild(inp);
+    item.appendChild(arrows);
+    item.appendChild(delBtn);
+    $exList.appendChild(item);
+  });
+
+  document.getElementById('exCountLabel').textContent =
+    `${exercises.length} exercise${exercises.length !== 1 ? 's' : ''}`;
+  document.getElementById('addExBtn').disabled = T.running || exercises.length >= 20;
+}
+
+function scrollActiveEx() {
+  requestAnimationFrame(() => {
+    const active = $exList.querySelector('.active-ex');
+    if (active) active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+}
+
+// ── Exercise list mutations ───────────────────────────────────
+function moveEx(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= exercises.length) return;
+  [exercises[i], exercises[j]] = [exercises[j], exercises[i]];
+  renderExList();
+  updateExMeta();
+}
+
+function deleteEx(i) {
+  if (exercises.length <= 1) return;
+  exercises.splice(i, 1);
+  renderExList();
+  updateExMeta();
+}
+
+function addEx() {
+  if (exercises.length >= 20) return;
+  exercises.push('');
+  renderExList();
+  updateExMeta();
+  // Focus the new input
+  requestAnimationFrame(() => {
+    const inputs = $exList.querySelectorAll('.ex-name-input');
+    const last = inputs[inputs.length - 1];
+    if (last) { last.focus(); last.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  });
+}
+
+function updateExMeta() {
+  saveToStorage();
+  if (!T.running && !T.paused) renderIdle();
+  renderTotalTime();
+}
+
+// ── Settings ─────────────────────────────────────────────────
+function applyConfig(key, val) {
+  cfg[key] = val;
+  saveToStorage();
+  document.getElementById('circRestRow').style.display = cfg.circuits > 1 ? '' : 'none';
+  if (!T.running && !T.paused) renderIdle();
+  renderTotalTime();
+}
+
+function syncSettingsUI() {
+  const ws = document.getElementById('workSlider');
+  ws.value = cfg.work;
+  document.getElementById('workVal').textContent =
+    cfg.work >= 60 ? `${Math.floor(cfg.work/60)}m${cfg.work%60?` ${cfg.work%60}s`:''}` : `${cfg.work}s`;
+  const rs = document.getElementById('restSlider');
+  rs.value = cfg.rest;
+  document.getElementById('restVal').textContent = `${cfg.rest}s`;
+  const crs = document.getElementById('circRestSlider');
+  crs.value = cfg.circuitRest;
+  document.getElementById('circRestVal').textContent = `${cfg.circuitRest}s`;
+  document.getElementById('circVal').textContent = cfg.circuits;
+  document.getElementById('circRestRow').style.display = cfg.circuits > 1 ? '' : 'none';
+}
+
+// ── Event listeners ──────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (!exercises.length) return;
+  if (T.phase === 'complete') {
+    resetTimer();
+    setTimeout(startTimer, 40);
+  } else if (!T.running) {
+    startTimer();
+  } else if (T.paused) {
+    resumeTimer();
+  } else {
+    pauseTimer();
+  }
+});
+document.getElementById('resetBtn').addEventListener('click', resetTimer);
+document.getElementById('skipBtn').addEventListener('click', skipPhase);
+document.getElementById('addExBtn').addEventListener('click', addEx);
+
+document.getElementById('workSlider').addEventListener('input', e => {
+  const v = +e.target.value;
+  document.getElementById('workVal').textContent = v >= 60
+    ? `${Math.floor(v/60)}m${v%60?` ${v%60}s`:''}` : `${v}s`;
+  applyConfig('work', v);
+});
+document.getElementById('restSlider').addEventListener('input', e => {
+  const v = +e.target.value;
+  document.getElementById('restVal').textContent = `${v}s`;
+  applyConfig('rest', v);
+});
+document.getElementById('circRestSlider').addEventListener('input', e => {
+  const v = +e.target.value;
+  document.getElementById('circRestVal').textContent = `${v}s`;
+  applyConfig('circuitRest', v);
+});
+document.getElementById('circDec').addEventListener('click', () => {
+  if (cfg.circuits > 1) { cfg.circuits--; document.getElementById('circVal').textContent = cfg.circuits; applyConfig('circuits', cfg.circuits); }
+});
+document.getElementById('circInc').addEventListener('click', () => {
+  if (cfg.circuits < 10) { cfg.circuits++; document.getElementById('circVal').textContent = cfg.circuits; applyConfig('circuits', cfg.circuits); }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && T.running && !T.paused && !T.rafId)
+    T.rafId = requestAnimationFrame(tick);
+});
+
+// ── Init ─────────────────────────────────────────────────────
+loadFromStorage();
+syncSettingsUI();
+renderExList();
+renderIdle();
+</script>
+</body>
+</html>
