@@ -153,6 +153,42 @@
     .add-btn:hover:not(:disabled) { border-color: var(--phase); color: var(--text); }
     .add-btn:disabled { opacity: 0.3; cursor: default; }
 
+    /* ── Workout selector ── */
+    .workout-row { display: flex; gap: 7px; align-items: center; }
+    .workout-select {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.83rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      min-width: 0;
+      transition: border-color 0.15s;
+    }
+    .workout-select:focus { border-color: var(--phase); }
+    .workout-select option { background: #1a1a24; color: var(--text); }
+    .btn-workout {
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 8px 13px;
+      border-radius: 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .btn-workout:hover:not(:disabled) { border-color: var(--phase); color: var(--text); }
+    .btn-workout.danger:hover:not(:disabled) { border-color: #ff4444; color: #ff4444; background: rgba(255,68,68,.1); }
+    .btn-workout:disabled { opacity: 0.3; cursor: default; }
+
     /* ── Timer circle ── */
     .timer-wrap {
       position: relative;
@@ -395,6 +431,13 @@
     <span class="sec-title">Exercises</span>
     <span class="sec-sub" id="exCountLabel"></span>
   </div>
+  <div class="workout-row">
+    <select class="workout-select" id="workoutSelect">
+      <option value="" disabled selected>— No saved workouts —</option>
+    </select>
+    <button class="btn-workout" id="saveWorkoutBtn">Save</button>
+    <button class="btn-workout danger" id="deleteWorkoutBtn" title="Delete workout" style="display:none">🗑</button>
+  </div>
   <div class="ex-list" id="exList"></div>
   <button class="add-btn" id="addExBtn">+ Add Exercise</button>
 </div>
@@ -542,6 +585,11 @@ let exercises = [
   'Push-ups', 'Squats', 'Lunges', 'Burpees', 'Mountain Climbers',
   'Jumping Jacks', 'Plank Hold', 'High Knees', 'Tricep Dips', 'Crunches',
 ];
+
+// ── Saved workouts ───────────────────────────────────────────
+const WORKOUTS_KEY = 'workoutStopwatch_workouts';
+let savedWorkouts  = []; // [{ id, name, exercises, cfg }]
+let activeWorkoutId = null; // id of currently-loaded preset, or null
 
 // ── Config ───────────────────────────────────────────────────
 let cfg = { work: 40, rest: 15, circuits: 1, circuitRest: 60 };
@@ -948,6 +996,94 @@ function updateExMeta() {
   renderTotalTime();
 }
 
+// ── Saved workout management ──────────────────────────────────
+function loadWorkouts() {
+  try {
+    const raw = localStorage.getItem(WORKOUTS_KEY);
+    if (raw) savedWorkouts = JSON.parse(raw);
+  } catch {}
+}
+
+function persistWorkouts() {
+  try { localStorage.setItem(WORKOUTS_KEY, JSON.stringify(savedWorkouts)); } catch {}
+}
+
+function renderWorkoutDropdown() {
+  const sel    = document.getElementById('workoutSelect');
+  const delBtn = document.getElementById('deleteWorkoutBtn');
+  sel.innerHTML = '';
+
+  const ph = document.createElement('option');
+  ph.value    = '';
+  ph.disabled = true;
+  ph.selected = !activeWorkoutId;
+  ph.textContent = savedWorkouts.length ? '— Select a workout —' : '— No saved workouts —';
+  sel.appendChild(ph);
+
+  savedWorkouts.forEach(w => {
+    const opt = document.createElement('option');
+    opt.value       = w.id;
+    opt.textContent = w.name;
+    if (w.id === activeWorkoutId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  delBtn.style.display = activeWorkoutId ? '' : 'none';
+  document.getElementById('saveWorkoutBtn').textContent =
+    activeWorkoutId ? 'Update' : 'Save';
+}
+
+function saveCurrentWorkout() {
+  // Pre-fill with existing name so hitting OK just updates; changing it saves as new
+  const currentName = savedWorkouts.find(w => w.id === activeWorkoutId)?.name ?? '';
+  const name = prompt('Save workout as:', currentName)?.trim();
+  if (!name) return;
+
+  const existing = savedWorkouts.find(w => w.name === name);
+  if (existing) {
+    // Same name → update in place
+    existing.exercises = [...exercises];
+    existing.cfg = { ...cfg };
+    activeWorkoutId = existing.id;
+  } else {
+    // New name → create entry
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    savedWorkouts.push({ id, name, exercises: [...exercises], cfg: { ...cfg } });
+    activeWorkoutId = id;
+  }
+  persistWorkouts();
+  renderWorkoutDropdown();
+}
+
+function loadWorkout(id) {
+  const w = savedWorkouts.find(w => w.id === id);
+  if (!w) return;
+  activeWorkoutId = id;
+  exercises = [...w.exercises];
+  if (w.cfg) {
+    cfg.work        = w.cfg.work        ?? cfg.work;
+    cfg.rest        = w.cfg.rest        ?? cfg.rest;
+    cfg.circuits    = w.cfg.circuits    ?? cfg.circuits;
+    cfg.circuitRest = w.cfg.circuitRest ?? cfg.circuitRest;
+  }
+  syncSettingsUI();
+  renderExList();
+  renderWorkoutDropdown();
+  if (!T.running && !T.paused) renderIdle();
+  renderTotalTime();
+  saveToStorage();
+}
+
+function deleteActiveWorkout() {
+  if (!activeWorkoutId) return;
+  const w = savedWorkouts.find(w => w.id === activeWorkoutId);
+  if (!confirm(`Delete "${w?.name}"?`)) return;
+  savedWorkouts = savedWorkouts.filter(w => w.id !== activeWorkoutId);
+  activeWorkoutId = null;
+  persistWorkouts();
+  renderWorkoutDropdown();
+}
+
 // ── Settings ─────────────────────────────────────────────────
 function applyConfig(key, val) {
   cfg[key] = val;
@@ -989,6 +1125,9 @@ document.getElementById('startBtn').addEventListener('click', () => {
 document.getElementById('resetBtn').addEventListener('click', resetTimer);
 document.getElementById('skipBtn').addEventListener('click', skipPhase);
 document.getElementById('addExBtn').addEventListener('click', addEx);
+document.getElementById('workoutSelect').addEventListener('change', e => { if (e.target.value) loadWorkout(e.target.value); });
+document.getElementById('saveWorkoutBtn').addEventListener('click', saveCurrentWorkout);
+document.getElementById('deleteWorkoutBtn').addEventListener('click', deleteActiveWorkout);
 
 document.getElementById('workSlider').addEventListener('input', e => {
   const v = +e.target.value;
@@ -1022,9 +1161,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ── Init ─────────────────────────────────────────────────────
+loadWorkouts();
 loadFromStorage();
 syncSettingsUI();
 renderExList();
+renderWorkoutDropdown();
 renderIdle();
 </script>
 </body>
